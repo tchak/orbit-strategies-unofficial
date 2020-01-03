@@ -18,18 +18,18 @@ import Coordinator, {
 } from '@orbit/coordinator';
 
 import { RetryPolicy, RetryPolicyOptions } from '../retry-policy';
-import { QueryCache, getQueryCache, dropQueryCache } from '../query-cache';
+import { CachePolicy, CachePolicyOptions } from '../cache-policy';
 
 const { assert } = Orbit;
 
 export interface OptimisticStrategyOptions extends StrategyOptions {
   /**
-   * The name of the memory source.
+   * The name of the source.
    */
   source: string;
 
   /**
-   * The name of the remote source.
+   * The name of the target source.
    */
   target: string;
 
@@ -39,7 +39,12 @@ export interface OptimisticStrategyOptions extends StrategyOptions {
   backup: string;
 
   /**
-   * Retry policy to use for update.
+   * Cache policy to use for queries.
+   */
+  cachePolicy?: CachePolicyOptions;
+
+  /**
+   * Retry policy to use for requests.
    */
   retryPolicy?: RetryPolicyOptions;
 
@@ -94,6 +99,7 @@ export class OptimisticStrategy extends Strategy {
     return this._sources[2];
   }
 
+  cachePolicy: CachePolicy;
   retryPolicy: RetryPolicy;
 
   shouldReloadRecord: (
@@ -151,6 +157,7 @@ export class OptimisticStrategy extends Strategy {
     super(options);
     this._listeners = [];
     this.retryPolicy = new RetryPolicy(options.retryPolicy);
+    this.cachePolicy = new CachePolicy(options.cachePolicy);
 
     this.shouldReloadRecord = options.shouldReloadRecord || defaultShouldReload;
     this.shouldReloadRecords =
@@ -171,6 +178,8 @@ export class OptimisticStrategy extends Strategy {
   ): Promise<void> {
     await super.activate(coordinator, options);
 
+    this.cachePolicy.setCache((this.source as any).cache);
+
     this._listeners = [
       this.target.on('transform', this.generateTargetTransformListener()),
       this.source.on('transform', this.generateSourceTransformListener()),
@@ -184,16 +193,11 @@ export class OptimisticStrategy extends Strategy {
   }
 
   async deactivate(): Promise<void> {
-    dropQueryCache(this.coordinator);
-
     this.retryPolicy.reset();
+    this.cachePolicy.clear();
 
     this._listeners.map(off => off());
     await super.deactivate();
-  }
-
-  get cache(): QueryCache {
-    return getQueryCache(this.coordinator);
   }
 
   get onLine(): boolean {
@@ -258,7 +262,7 @@ export class OptimisticStrategy extends Strategy {
       return true;
     }
 
-    if (this.cache.has(query)) {
+    if (this.cachePolicy.has(query)) {
       return false;
     }
 
@@ -266,7 +270,7 @@ export class OptimisticStrategy extends Strategy {
   }
 
   protected blockingBeforeQuery(query: Query) {
-    return this.shouldReload(query) || !this.cache.has(query);
+    return this.shouldReload(query) || !this.cachePolicy.has(query);
   }
 
   protected generateTargetTransformListener() {
@@ -292,7 +296,7 @@ export class OptimisticStrategy extends Strategy {
       if (result && result.then) {
         result.then(() => {
           this.retryPolicy.reset();
-          this.cache.load(query);
+          this.cachePolicy.load(query);
         });
 
         if (this.blockingBeforeQuery(query)) {

@@ -477,22 +477,6 @@
     "@orbit/core" "^0.17.0-beta.1"
     "@orbit/utils" "^0.17.0-beta.1"
 
-"@orbit/immutable@^0.17.0-beta.1":
-  version "0.17.0-beta.1"
-  resolved "https://registry.yarnpkg.com/@orbit/immutable/-/immutable-0.17.0-beta.1.tgz#a8c5e8ac538a85049bdd37f621467a32757f1e2b"
-  integrity sha512-yGoiqeN+5ChsB1nBYZP5b8eJrQWxD3H3hiRui3Ey0L0sqsa7BjdyLbK9miS5VtlqzREzV1NOj9b98egqTX/kFg==
-
-"@orbit/memory@^0.17.0-beta.1":
-  version "0.17.0-beta.1"
-  resolved "https://registry.yarnpkg.com/@orbit/memory/-/memory-0.17.0-beta.1.tgz#eeed4950cd1cf0c253a9468084ca20c60d18d875"
-  integrity sha512-PYD2yUVaDv/fOv9rPmfDbp4ME/nRc79wffXyCa/gcTLzF+mbtsS48koXmKZmhHL4ZNYtz/tytoWjXXOhqhM3vg==
-  dependencies:
-    "@orbit/core" "^0.17.0-beta.1"
-    "@orbit/data" "^0.17.0-beta.1"
-    "@orbit/immutable" "^0.17.0-beta.1"
-    "@orbit/record-cache" "^0.17.0-beta.1"
-    "@orbit/utils" "^0.17.0-beta.1"
-
 "@orbit/record-cache@^0.17.0-beta.1":
   version "0.17.0-beta.1"
   resolved "https://registry.yarnpkg.com/@orbit/record-cache/-/record-cache-0.17.0-beta.1.tgz#f4d80e74846e3fc17725d3479f9f89e4e5b42cfc"

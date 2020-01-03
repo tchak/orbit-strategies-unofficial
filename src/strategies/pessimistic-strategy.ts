@@ -17,18 +17,18 @@ import Coordinator, {
 } from '@orbit/coordinator';
 
 import { RetryPolicy, RetryPolicyOptions } from '../retry-policy';
-import { QueryCache, getQueryCache, dropQueryCache } from '../query-cache';
+import { CachePolicy, CachePolicyOptions } from '../cache-policy';
 
 const { assert } = Orbit;
 
 export interface PessimisticStrategyOptions extends StrategyOptions {
   /**
-   * The name of the memory source.
+   * The name of the source.
    */
   source: string;
 
   /**
-   * The name of the remote source.
+   * The name of the target source.
    */
   target: string;
 
@@ -39,7 +39,12 @@ export interface PessimisticStrategyOptions extends StrategyOptions {
   passHints?: boolean;
 
   /**
-   * Retry policy to use for update.
+   * Cache policy to use for queries.
+   */
+  cachePolicy?: CachePolicyOptions;
+
+  /**
+   * Retry policy to use for requests.
    */
   retryPolicy?: RetryPolicyOptions;
 
@@ -117,6 +122,7 @@ export class PessimisticStrategy extends Strategy {
   }
 
   passHints: boolean;
+  cachePolicy: CachePolicy;
   retryPolicy: RetryPolicy;
 
   shouldBackgroundReloadRecord: (
@@ -188,8 +194,10 @@ export class PessimisticStrategy extends Strategy {
     options.name = options.name || defaultName;
 
     super(options);
-    this.retryPolicy = new RetryPolicy(options.retryPolicy);
     this._listeners = [];
+
+    this.retryPolicy = new RetryPolicy(options.retryPolicy);
+    this.cachePolicy = new CachePolicy(options.cachePolicy);
 
     this.passHints = options.passHints !== false;
 
@@ -223,6 +231,8 @@ export class PessimisticStrategy extends Strategy {
   ): Promise<void> {
     await super.activate(coordinator, options);
 
+    this.cachePolicy.setCache((this.source as any).cache);
+
     this._listeners = [
       this.target.on('transform', this.generateTransformListener()),
       this.source.on('beforeQuery', this.generateBeforeQueryListener()),
@@ -233,16 +243,11 @@ export class PessimisticStrategy extends Strategy {
   }
 
   async deactivate(): Promise<void> {
-    dropQueryCache(this.coordinator);
-
     this.retryPolicy.reset();
+    this.cachePolicy.clear();
 
     this._listeners.map(off => off());
     await super.deactivate();
-  }
-
-  get cache(): QueryCache {
-    return getQueryCache(this.coordinator);
   }
 
   shouldBackgroundReload(query: Query): boolean {
@@ -348,7 +353,7 @@ export class PessimisticStrategy extends Strategy {
       return true;
     }
 
-    if (!this.cache.has(query)) {
+    if (!this.cachePolicy.has(query)) {
       return true;
     }
 
@@ -356,7 +361,7 @@ export class PessimisticStrategy extends Strategy {
   }
 
   protected blockingBeforeQuery(query: Query) {
-    if (this.cache.has(query) && this.shouldBackgroundReload(query)) {
+    if (this.cachePolicy.has(query) && this.shouldBackgroundReload(query)) {
       return false;
     }
 
@@ -378,7 +383,7 @@ export class PessimisticStrategy extends Strategy {
       if (result && result.then) {
         result.then(() => {
           this.retryPolicy.reset();
-          this.cache.load(query);
+          this.cachePolicy.load(query);
         });
 
         if (this.blockingBeforeQuery(query)) {

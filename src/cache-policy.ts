@@ -1,4 +1,3 @@
-import Coordinator from '@orbit/coordinator';
 import {
   Query,
   serializeRecordIdentity,
@@ -8,41 +7,69 @@ import {
   FindRelatedRecord,
   FindRelatedRecords
 } from '@orbit/data';
-import MemorySource, { MemoryCache } from '@orbit/memory';
+import { SyncRecordCache } from '@orbit/record-cache';
 
-const caches = new WeakMap<Coordinator, QueryCache>();
+export interface CachePolicyOptions {
+  enabled?: boolean;
+  expireIn?: number;
+}
 
-export class QueryCache {
-  private _cache?: MemoryCache;
+export class CachePolicy {
+  enabled = true;
+  expireIn?: number;
+
+  private _cache?: SyncRecordCache;
   private _expressions = new Map();
 
-  constructor(cache?: MemoryCache) {
-    this._cache = cache;
+  constructor(options?: CachePolicyOptions) {
+    if (options) {
+      this.enabled = options.enabled !== false;
+      this.expireIn = options.expireIn;
+    }
   }
 
   load(query: Query): void {
-    for (let expression of query.expressions) {
-      this._expressions.set(
-        this.queryExpressionToCacheKey(expression),
-        Date.now()
-      );
+    if (this.enabled) {
+      for (let expression of query.expressions) {
+        this._expressions.set(
+          this.queryExpressionToCacheKey(expression),
+          Date.now()
+        );
+      }
     }
   }
 
   has(query: Query): boolean {
+    if (!this.enabled) {
+      return false;
+    }
+
     for (let expression of query.expressions) {
-      if (
-        !this.queryExpressionIsLoaded(expression) &&
-        !this.hasQueryExpressionInCache(expression)
-      ) {
+      if (!this.queryExpressionIsLoaded(expression)) {
         return false;
       }
     }
+
     return true;
   }
 
+  clear() {
+    this._expressions.clear();
+  }
+
+  setCache(cache: SyncRecordCache) {
+    this._cache = cache;
+  }
+
   private queryExpressionIsLoaded(expression: QueryExpression) {
-    return this._expressions.has(this.queryExpressionToCacheKey(expression));
+    const loadedAt = this._expressions.has(
+      this.queryExpressionToCacheKey(expression)
+    );
+
+    if (loadedAt) {
+      return true;
+    }
+    return this.hasQueryExpressionInCache(expression);
   }
 
   private hasQueryExpressionInCache(expression: QueryExpression) {
@@ -86,29 +113,4 @@ export class QueryCache {
         return JSON.stringify(expression);
     }
   }
-}
-
-export function getQueryCache(coordinator: Coordinator) {
-  let cache = caches.get(coordinator);
-
-  if (!cache) {
-    const memoryCache = findMemoryCache(coordinator);
-    cache = new QueryCache(memoryCache);
-    caches.set(coordinator, cache);
-  }
-
-  return cache;
-}
-
-export function dropQueryCache(coordinator: Coordinator) {
-  caches.delete(coordinator);
-}
-
-function findMemoryCache(coordinator: Coordinator): MemoryCache | undefined {
-  for (let source of coordinator.sources) {
-    if (source instanceof MemorySource) {
-      return source.cache;
-    }
-  }
-  return;
 }
