@@ -19,7 +19,7 @@ export class CachePolicy {
   expireIn?: number;
 
   private _cache?: SyncRecordCache;
-  private _expressions = new Map();
+  private _loadedExpressions = new Map();
 
   constructor(options?: CachePolicyOptions) {
     if (options) {
@@ -31,7 +31,7 @@ export class CachePolicy {
   load(query: Query): void {
     if (this.enabled) {
       for (let expression of query.expressions) {
-        this._expressions.set(
+        this._loadedExpressions.set(
           this.queryExpressionToCacheKey(expression),
           Date.now()
         );
@@ -54,7 +54,7 @@ export class CachePolicy {
   }
 
   clear() {
-    this._expressions.clear();
+    this._loadedExpressions.clear();
   }
 
   setCache(cache: SyncRecordCache) {
@@ -62,7 +62,7 @@ export class CachePolicy {
   }
 
   private queryExpressionIsLoaded(expression: QueryExpression) {
-    const loadedAt = this._expressions.has(
+    const loadedAt = this._loadedExpressions.has(
       this.queryExpressionToCacheKey(expression)
     );
 
