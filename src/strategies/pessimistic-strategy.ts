@@ -45,27 +45,27 @@ export interface PessimisticStrategyOptions extends StrategyOptions {
 
   shouldBackgroundReloadRecord?: (
     queryExpression: FindRecord,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldBackgroundReloadRecords?: (
     queryExpression: FindRecords,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldBackgroundReloadRelatedRecord?: (
     queryExpression: FindRelatedRecord,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldBackgroundReloadRelatedRecords?: (
     queryExpression: FindRelatedRecords,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldReloadRecord?: (
     queryExpression: FindRecord,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldReloadRecords?: (
@@ -75,28 +75,24 @@ export interface PessimisticStrategyOptions extends StrategyOptions {
 
   shouldReloadRelatedRecord?: (
     queryExpression: FindRelatedRecord,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldReloadRelatedRecords?: (
     queryExpression: FindRelatedRecords,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldRetryQuery?: (query: Query, e: Error) => boolean;
   shouldRetryUpdate?: (transform: Transform, e: Error) => boolean;
 }
 
-function defaultShouldReload(
-  queryExpression: QueryExpression,
-  options: object
-): boolean {
+function defaultShouldReload(queryExpression: QueryExpression): boolean {
   return false;
 }
 
 function defaultShouldBackgroundReload(
-  queryExpression: QueryExpression,
-  options: object
+  queryExpression: QueryExpression
 ): boolean {
   return true;
 }
@@ -125,39 +121,42 @@ export class PessimisticStrategy extends Strategy {
 
   shouldBackgroundReloadRecord: (
     queryExpression: FindRecord,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldBackgroundReloadRecords: (
     queryExpression: FindRecords,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldBackgroundReloadRelatedRecord: (
     queryExpression: FindRelatedRecord,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldBackgroundReloadRelatedRecords: (
     queryExpression: FindRelatedRecords,
-    options: object
+    options?: object
   ) => boolean;
 
-  shouldReloadRecord: (queryExpression: FindRecord, options: object) => boolean;
+  shouldReloadRecord: (
+    queryExpression: FindRecord,
+    options?: object
+  ) => boolean;
 
   shouldReloadRecords: (
     queryExpression: FindRecords,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldReloadRelatedRecord: (
     queryExpression: FindRelatedRecord,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldReloadRelatedRecords: (
     queryExpression: FindRelatedRecords,
-    options: object
+    options?: object
   ) => boolean;
 
   shouldRetryQuery: (query: Query, e: Error) => boolean;
@@ -247,6 +246,10 @@ export class PessimisticStrategy extends Strategy {
   }
 
   shouldBackgroundReload(query: Query): boolean {
+    if (query.options && query.options.backgroundReload) {
+      return true;
+    }
+
     for (let expression of query.expressions) {
       switch (expression.op) {
         case 'findRecord':
@@ -295,6 +298,10 @@ export class PessimisticStrategy extends Strategy {
   }
 
   shouldReload(query: Query): boolean {
+    if (query.options && query.options.reload) {
+      return true;
+    }
+
     for (let expression of query.expressions) {
       switch (expression.op) {
         case 'findRecord':
@@ -337,12 +344,7 @@ export class PessimisticStrategy extends Strategy {
   }
 
   protected filterBeforeQuery(query: Query) {
-    if (
-      (query.options && query.options.reload) ||
-      (query.options && query.options.backgroundReload) ||
-      this.shouldReload(query) ||
-      this.shouldBackgroundReload(query)
-    ) {
+    if (this.shouldReload(query) || this.shouldBackgroundReload(query)) {
       return true;
     }
 
@@ -354,11 +356,7 @@ export class PessimisticStrategy extends Strategy {
   }
 
   protected blockingBeforeQuery(query: Query) {
-    const backgroundReload =
-      this.shouldBackgroundReload(query) ||
-      (query.options && query.options.backgroundReload);
-
-    if (this.cache.has(query) && backgroundReload) {
+    if (this.cache.has(query) && this.shouldBackgroundReload(query)) {
       return false;
     }
 
@@ -377,16 +375,18 @@ export class PessimisticStrategy extends Strategy {
 
       const result = action(this.target, 'pull')(query);
 
-      result.then(() => {
-        this.retryPolicy.reset();
-        this.cache.load(query);
-      });
+      if (result && result.then) {
+        result.then(() => {
+          this.retryPolicy.reset();
+          this.cache.load(query);
+        });
 
-      if (this.blockingBeforeQuery(query)) {
-        if (this.passHints && typeof hints === 'object') {
-          return this.applyHint(hints, result);
+        if (this.blockingBeforeQuery(query)) {
+          if (this.passHints && typeof hints === 'object') {
+            return this.applyHint(hints, result);
+          }
+          return result;
         }
-        return result;
       }
     };
   }
@@ -409,13 +409,16 @@ export class PessimisticStrategy extends Strategy {
     return (transform: Transform, hints: any) => {
       const result = action(this.target, 'push')(transform);
 
-      result.then(() => {
-        this.retryPolicy.reset();
-      });
+      if (result && result.then) {
+        result.then(() => {
+          this.retryPolicy.reset();
+        });
 
-      if (this.passHints && typeof hints === 'object') {
-        return this.applyHint(hints, result);
+        if (this.passHints && typeof hints === 'object') {
+          return this.applyHint(hints, result);
+        }
       }
+
       return result;
     };
   }
