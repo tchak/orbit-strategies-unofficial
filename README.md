@@ -2,6 +2,14 @@
 
 Experimental strategies for Orbit.js
 
+## Usage
+
+This package contains preconfigured strategies for Orbit.js.
+
+- `PessimisticStrategy` if you are familiar with `ember-data`, you will get a very similar caching policy – you can add a `reload` or `backgroundReload` options to your queries. Plus by default a retry policy is applied.
+
+- `OptimisticStrategy` should be used in combination with `BackupStrategy`. Just like `PessimisticStrategy` it includes caching and retry policies, but is designed to be offline first. By default it will drop any failed remote queries and respond with local data. For updates you need to override `catch` hook to handle failures.
+
 ## Installation
 
 ```
