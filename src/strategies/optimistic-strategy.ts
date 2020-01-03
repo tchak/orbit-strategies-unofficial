@@ -48,6 +48,11 @@ export interface OptimisticStrategyOptions extends StrategyOptions {
    */
   retryPolicy?: RetryPolicyOptions;
 
+  /**
+   * A handler for errors thrown as a result of performing an update.
+   */
+  catch?: (transform: Transform, e: Error) => void;
+
   shouldReloadRecord?: (
     queryExpression: FindRecord,
     options?: object
@@ -101,6 +106,8 @@ export class OptimisticStrategy extends Strategy {
 
   cachePolicy: CachePolicy;
   retryPolicy: RetryPolicy;
+
+  catch?: (transform: Transform, e: Error) => void;
 
   shouldReloadRecord: (
     queryExpression: FindRecord,
@@ -158,6 +165,8 @@ export class OptimisticStrategy extends Strategy {
     this._listeners = [];
     this.retryPolicy = new RetryPolicy(options.retryPolicy);
     this.cachePolicy = new CachePolicy(options.cachePolicy);
+
+    this.catch = options.catch;
 
     this.shouldReloadRecord = options.shouldReloadRecord || defaultShouldReload;
     this.shouldReloadRecords =
@@ -352,8 +361,12 @@ export class OptimisticStrategy extends Strategy {
         this.source.requestQueue.skip(e);
         this.target.requestQueue.skip(e);
         throw e;
+      } else if (this.catch) {
+        this.catch.apply(this, [transform, e]);
       } else {
+        this.source.requestQueue.skip(e);
         this.target.requestQueue.skip(e);
+        throw e;
       }
     };
   }
