@@ -13,6 +13,7 @@ export class OptimisticStrategy extends RemoteStrategy {
   catch?: (transform: Transform, e: Error) => void;
 
   constructor(options: OptimisticStrategyOptions) {
+    options.prefix = 'optimistic';
     super(options);
 
     this.catch = options.catch;

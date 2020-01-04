@@ -68,6 +68,7 @@ export class PessimisticStrategy extends RemoteStrategy {
   ) => boolean;
 
   constructor(options: PessimisticStrategyOptions) {
+    options.prefix = 'pessimistic';
     super(options);
 
     this.passHints = options.passHints !== false;

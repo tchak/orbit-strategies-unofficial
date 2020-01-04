@@ -52,7 +52,7 @@ module('PessimisticStrategy', function(hooks) {
     );
     assert.equal(
       strategy.name,
-      's1:{query|update} -> s2:{pull|push}',
+      'pessimistic s1:{query|update} -> s2:{pull|push}',
       'name is based on source names by default'
     );
   });

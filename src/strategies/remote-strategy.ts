@@ -64,6 +64,8 @@ export interface RemoteStrategyOptions extends StrategyOptions {
 
   shouldRetryQuery?: (query: Query, e: Error) => boolean;
   shouldRetryUpdate?: (transform: Transform, e: Error) => boolean;
+
+  prefix?: string;
 }
 
 function defaultShouldReload(queryExpression: QueryExpression): boolean {
@@ -135,7 +137,9 @@ export class RemoteStrategy extends Strategy {
       typeof target === 'string'
     );
 
-    const defaultName = `${source}:{query|update} -> ${target}:{pull|push}`;
+    const defaultName = `${
+      options.prefix ? options.prefix + ' ' : ''
+    }${source}:{query|update} -> ${target}:{pull|push}`;
 
     options.sources = [source, target];
     options.name = options.name || defaultName;
