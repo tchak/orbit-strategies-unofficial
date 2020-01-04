@@ -137,6 +137,7 @@ export class OptimisticStrategy extends RemoteStrategy {
     } else if (this.catch) {
       this.catch.apply(this, [transform, e]);
     } else {
+      console.warn('No `catch` handler was defined.');
       this.skipAndThrowError(e);
     }
   }
