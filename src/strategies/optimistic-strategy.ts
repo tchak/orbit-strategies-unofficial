@@ -21,6 +21,10 @@ export class OptimisticStrategy extends RemoteStrategy {
   generateListeners() {
     return [
       this.target.on('transform', this.generateTransformListener()),
+      this.target.on('pull', this.generateQueryListener()),
+      this.target.on('pullFail', this.generateQueryFailListener()),
+      this.target.on('push', this.generateUpdateListener()),
+      this.target.on('pushFail', this.generateUpdateFailListener()),
       this.source.on('beforeQuery', this.generateBeforeQueryListener()),
       this.source.on('queryFail', this.generateQueryFailListener()),
       this.source.on('beforeUpdate', this.generateBeforeUpdateListener()),
@@ -62,28 +66,24 @@ export class OptimisticStrategy extends RemoteStrategy {
 
       const result = (this.target as any).pull(query);
 
-      if (result && result.then) {
-        result.then(() => {
-          this.retryPolicy.reset();
-          this.cachePolicy.load(query);
+      if (result && result.then && this.blockingBeforeQuery(query)) {
+        return result.catch((e: Error) => {
+          this.queryFailHandler(query, e);
         });
-
-        if (this.blockingBeforeQuery(query)) {
-          return result;
-        }
       }
+    };
+  }
+
+  protected generateQueryListener() {
+    return (query: Query) => {
+      this.retryPolicy.reset();
+      this.cachePolicy.load(query);
     };
   }
 
   protected generateQueryFailListener() {
     return (query: Query, e: Error) => {
-      if (this.retryPolicy.canRetry && this.shouldRetryQuery(query, e)) {
-        this.retryPolicy.retry(() => {
-          this.target.requestQueue.retry();
-        });
-      } else {
-        this.target.requestQueue.skip(e);
-      }
+      this.queryFailHandler(query, e);
     };
   }
 
@@ -91,39 +91,52 @@ export class OptimisticStrategy extends RemoteStrategy {
     return (transform: Transform) => {
       const result = (this.target as any).push(transform);
 
-      if (result && result.then) {
-        result.then(() => {
-          this.retryPolicy.reset();
-        });
-
-        if (transform.options && transform.options.blocking) {
-          return result;
-        }
+      if (
+        result &&
+        result.then &&
+        transform.options &&
+        transform.options.blocking
+      ) {
+        return result;
       }
+    };
+  }
+
+  protected generateUpdateListener() {
+    return () => {
+      this.retryPolicy.reset();
     };
   }
 
   protected generateUpdateFailListener() {
     return (transform: Transform, e: Error) => {
-      if (this.retryPolicy.canRetry && this.shouldRetryUpdate(transform, e)) {
-        this.retryPolicy.retry(() => {
-          this.target.requestQueue.retry();
-        });
-      } else if (
-        this.retryPolicy.enabled &&
-        !this.onLine &&
-        this.shouldRetryUpdate(transform, e)
-      ) {
-        this.retryPolicy.retry(() => {
-          this.target.requestQueue.retry();
-        }, this.retryPolicy.maxDelay);
-      } else if (transform.options && transform.options.blocking) {
-        this.skipAndThrowError(e);
-      } else if (this.catch) {
-        this.catch.apply(this, [transform, e]);
-      } else {
-        this.skipAndThrowError(e);
-      }
+      this.updateFailHandler(transform, e);
     };
+  }
+
+  protected queryFailHandler(query: Query, e: Error) {
+    if (this.retryPolicy.canRetry && this.shouldRetryQuery(query, e)) {
+      this.retry();
+    } else {
+      this.target.requestQueue.skip(e);
+    }
+  }
+
+  protected updateFailHandler(transform: Transform, e: Error) {
+    if (this.retryPolicy.canRetry && this.shouldRetryUpdate(transform, e)) {
+      this.retry();
+    } else if (
+      this.retryPolicy.enabled &&
+      !this.onLine &&
+      this.shouldRetryUpdate(transform, e)
+    ) {
+      this.retry(this.retryPolicy.maxDelay);
+    } else if (transform.options && transform.options.blocking) {
+      this.skipAndThrowError(e);
+    } else if (this.catch) {
+      this.catch.apply(this, [transform, e]);
+    } else {
+      this.skipAndThrowError(e);
+    }
   }
 }

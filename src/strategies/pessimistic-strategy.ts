@@ -197,9 +197,7 @@ export class PessimisticStrategy extends RemoteStrategy {
   protected generateQueryFailListener() {
     return (query: Query, e: Error) => {
       if (this.retryPolicy.canRetry && this.shouldRetryQuery(query, e)) {
-        this.retryPolicy.retry(() => {
-          this.target.requestQueue.retry();
-        });
+        this.retry();
       } else {
         this.skipAndThrowError(e);
       }
@@ -227,9 +225,7 @@ export class PessimisticStrategy extends RemoteStrategy {
   protected generateUpdateFailListener() {
     return (transform: Transform, e: Error) => {
       if (this.retryPolicy.canRetry && this.shouldRetryUpdate(transform, e)) {
-        this.retryPolicy.retry(() => {
-          this.target.requestQueue.retry();
-        });
+        this.retry();
       } else {
         this.skipAndThrowError(e);
       }

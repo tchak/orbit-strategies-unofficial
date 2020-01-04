@@ -9,8 +9,8 @@ export interface RetryPolicyOptions {
 export class RetryPolicy {
   enabled = true;
   retries = 5;
-  delay = 100;
-  maxDelay = 2000;
+  delay = 200;
+  maxDelay = 3200;
   factor = 2;
 
   private _retryTimer: any;
@@ -36,12 +36,17 @@ export class RetryPolicy {
   }
 
   get canRetry() {
-    return this.enabled && this._retries <= this.retries;
+    return this.enabled && this._retries < this.retries;
   }
 
   retry(callback: () => void, delay?: number) {
-    clearTimeout(this._retryTimer);
-    this._retryTimer = setTimeout(callback, delay || this.currentDelay);
+    if (this._retryTimer) {
+      return;
+    }
+    this._retryTimer = setTimeout(() => {
+      this._retryTimer = undefined;
+      callback();
+    }, delay || this.currentDelay);
     this._retries++;
   }
 
@@ -51,7 +56,7 @@ export class RetryPolicy {
     this._retryTimer = undefined;
   }
 
-  private get currentDelay() {
+  get currentDelay() {
     let delay = this.delay;
     for (let i = 0; i < this._retries; i++) {
       delay = delay * this.factor;

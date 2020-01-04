@@ -168,6 +168,12 @@ export class RemoteStrategy extends Strategy {
     throw e;
   }
 
+  protected retry(delay?: number) {
+    this.retryPolicy.retry(() => {
+      this.target.requestQueue.retry().catch(() => {});
+    }, delay || this.retryPolicy.currentDelay);
+  }
+
   async activate(
     coordinator: Coordinator,
     options: ActivationOptions = {}
