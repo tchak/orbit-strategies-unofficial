@@ -62,13 +62,18 @@ export class CachePolicy {
   }
 
   private queryExpressionIsLoaded(expression: QueryExpression) {
-    const loadedAt = this._loadedExpressions.get(
-      this.queryExpressionToCacheKey(expression)
-    );
+    const cacheKey = this.queryExpressionToCacheKey(expression);
+    const loadedAt = this._loadedExpressions.get(cacheKey);
 
     if (loadedAt) {
+      const age = Date.now() - loadedAt;
+      if (this.expireIn && age > this.expireIn) {
+        this._loadedExpressions.delete(cacheKey);
+        return false;
+      }
       return true;
     }
+
     return this.hasQueryExpressionInCache(expression);
   }
 
