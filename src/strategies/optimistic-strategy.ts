@@ -1,4 +1,4 @@
-import { Transform, Query } from '@orbit/data';
+import { Transform, Query, NetworkError } from '@orbit/data';
 
 import { RemoteStrategy, RemoteStrategyOptions } from './remote-strategy';
 
@@ -9,6 +9,10 @@ export interface OptimisticStrategyOptions extends RemoteStrategyOptions {
   catch?: (transform: Transform, e: Error) => void;
 }
 
+export function onLine(): boolean {
+  return window === undefined ? true : navigator.onLine;
+}
+
 export class OptimisticStrategy extends RemoteStrategy {
   catch?: (transform: Transform, e: Error) => void;
 
@@ -17,10 +21,12 @@ export class OptimisticStrategy extends RemoteStrategy {
     super(options);
 
     this.catch = options.catch;
+    this._onLine = onLine();
   }
 
   generateListeners() {
     return [
+      this.generateOnLineListener(),
       this.target.on('transform', this.generateTransformListener()),
       this.target.on('pull', this.generateQueryListener()),
       this.target.on('pullFail', this.generateQueryFailListener()),
@@ -33,8 +39,43 @@ export class OptimisticStrategy extends RemoteStrategy {
     ];
   }
 
-  get onLine(): boolean {
-    return window === undefined ? true : navigator.onLine;
+  private _onLine: boolean;
+  get isOnLine(): boolean {
+    return this._onLine;
+  }
+
+  onLine() {
+    this._onLine = onLine();
+    this.retryPolicy.reset();
+  }
+
+  offLine() {
+    this._onLine = false;
+  }
+
+  protected generateOnLineListener(): () => void {
+    if (window === undefined) {
+      return () => {};
+    }
+
+    const onLineCallback = () => {
+      this.onLine();
+
+      if (this.isOnLine && this.retryPolicy.canRetry) {
+        this.retry();
+      }
+    };
+    const offLineCallback = () => {
+      this.offLine();
+    };
+
+    window.addEventListener('online', onLineCallback);
+    window.addEventListener('offline', offLineCallback);
+
+    return () => {
+      window.removeEventListener('online', onLineCallback);
+      window.removeEventListener('offline', offLineCallback);
+    };
   }
 
   protected generateTransformListener() {
@@ -52,7 +93,7 @@ export class OptimisticStrategy extends RemoteStrategy {
       return false;
     }
 
-    return this.onLine;
+    return this.isOnLine;
   }
 
   protected blockingBeforeQuery(query: Query) {
@@ -75,19 +116,6 @@ export class OptimisticStrategy extends RemoteStrategy {
     };
   }
 
-  protected generateQueryListener() {
-    return (query: Query) => {
-      this.retryPolicy.reset();
-      this.cachePolicy.load(query);
-    };
-  }
-
-  protected generateQueryFailListener() {
-    return (query: Query, e: Error) => {
-      this.queryFailHandler(query, e);
-    };
-  }
-
   protected generateBeforeUpdateListener() {
     return (transform: Transform) => {
       const result = (this.target as any).push(transform);
@@ -98,14 +126,29 @@ export class OptimisticStrategy extends RemoteStrategy {
         transform.options &&
         transform.options.blocking
       ) {
-        return result;
+        return result.catch((e: Error) => {
+          this.updateFailHandler(transform, e);
+        });
       }
+    };
+  }
+
+  protected generateQueryListener() {
+    return (query: Query) => {
+      this.onLine();
+      this.cachePolicy.load(query);
     };
   }
 
   protected generateUpdateListener() {
     return () => {
-      this.retryPolicy.reset();
+      this.onLine();
+    };
+  }
+
+  protected generateQueryFailListener() {
+    return (query: Query, e: Error) => {
+      this.queryFailHandler(query, e);
     };
   }
 
@@ -116,6 +159,10 @@ export class OptimisticStrategy extends RemoteStrategy {
   }
 
   protected queryFailHandler(query: Query, e: Error) {
+    if (e instanceof NetworkError) {
+      this.offLine();
+    }
+
     if (this.retryPolicy.canRetry && this.shouldRetryQuery(query, e)) {
       this.retry();
     } else {
@@ -124,14 +171,12 @@ export class OptimisticStrategy extends RemoteStrategy {
   }
 
   protected updateFailHandler(transform: Transform, e: Error) {
+    if (e instanceof NetworkError) {
+      this.offLine();
+    }
+
     if (this.retryPolicy.canRetry && this.shouldRetryUpdate(transform, e)) {
       this.retry();
-    } else if (
-      this.retryPolicy.enabled &&
-      !this.onLine &&
-      this.shouldRetryUpdate(transform, e)
-    ) {
-      this.retry(this.retryPolicy.maxDelay);
     } else if (transform.options && transform.options.blocking) {
       this.skipAndThrowError(e);
     } else if (this.catch) {
